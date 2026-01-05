@@ -17,7 +17,10 @@ class InferenceConfig:
     def _get_string(self, var: str, default_value: str = "") -> str:
         """attempt to get the value of var from the os environment; if not present return the
         default_value"""
-        return os.environ.get(var, default_value)
+        try:
+            return os.environ[var]
+        except KeyError:
+            return default_value
 
     def _get_int(self, var: str, default_value: int) -> int:
         if value := self._get_string(var):
