@@ -256,32 +256,48 @@ def extract_text_from_spans(spans, join_with_space=True, remove_integer_superscr
     """
 
     join_char = " " if join_with_space else ""
-    spans_copy = spans[:]
 
     if remove_integer_superscripts:
+        # Use list comprehension instead of remove() to avoid O(n²) complexity
+        spans_copy = []
         for span in spans:
             if "flags" not in span:
+                spans_copy.append(span)
                 continue
             flags = span["flags"]
-            if flags & 2**0:  # superscript flag
+            if flags & 1:  # superscript flag (2**0 = 1)
                 if span["text"].strip().isdigit():
-                    spans_copy.remove(span)
+                    continue  # Skip this span
                 else:
                     span["superscript"] = True
+
+            spans_copy.append(span)
+    else:
+        spans_copy = spans[:]
 
     if len(spans_copy) == 0:
         return ""
 
-    spans_copy.sort(key=lambda span: span["span_num"])
-    spans_copy.sort(key=lambda span: span["line_num"])
-    spans_copy.sort(key=lambda span: span["block_num"])
+    # Combine three sorts into one with tuple key for better performance
+    spans_copy.sort(key=lambda span: (span["block_num"], span["line_num"], span["span_num"]))
+
+    # Force the span at the end of every line within a block to have exactly one space
+    # unless the line ends with a space or ends with a non-space followed by a hyphen
 
     # Force the span at the end of every line within a block to have exactly one space
     # unless the line ends with a space or ends with a non-space followed by a hyphen
     line_texts = []
     line_span_texts = [spans_copy[0]["text"]]
-    for span1, span2 in zip(spans_copy[:-1], spans_copy[1:]):
-        if span1["block_num"] != span2["block_num"] or span1["line_num"] != span2["line_num"]:
+    
+    # Cache dictionary lookups to reduce overhead
+    prev_block = spans_copy[0]["block_num"]
+    prev_line = spans_copy[0]["line_num"]
+    
+    for span in spans_copy[1:]:
+        curr_block = span["block_num"]
+        curr_line = span["line_num"]
+        
+        if prev_block != curr_block or prev_line != curr_line:
             line_text = join_char.join(line_span_texts).strip()
             if (
                 len(line_text) > 0
@@ -291,9 +307,13 @@ def extract_text_from_spans(spans, join_with_space=True, remove_integer_superscr
             ):
                 line_text += " "
             line_texts.append(line_text)
-            line_span_texts = [span2["text"]]
+            line_span_texts = [span["text"]]
         else:
-            line_span_texts.append(span2["text"])
+            line_span_texts.append(span["text"])
+        
+        prev_block = curr_block
+        prev_line = curr_line
+    
     line_text = join_char.join(line_span_texts)
     line_texts.append(line_text)
 
