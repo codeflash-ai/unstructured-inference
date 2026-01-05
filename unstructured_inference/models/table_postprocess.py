@@ -3,6 +3,9 @@
 Copyright (C) 2021 Microsoft Corporation
 """
 from collections import defaultdict
+from typing import Sequence
+
+from numba import njit
 
 
 class Rect:
@@ -233,8 +236,10 @@ def get_bbox_span_subset(spans, bbox, threshold=0.5):
     threshold: the fraction of the span that must overlap with the bbox.
     """
     span_subset = []
+    bbox_arr = tuple(bbox)
     for span in spans:
-        if overlaps(span["bbox"], bbox, threshold):
+        span_bbox = tuple(span["bbox"])
+        if njit_overlaps(span_bbox, bbox_arr, threshold):
             span_subset.append(span)
     return span_subset
 
@@ -610,3 +615,27 @@ def remove_supercell_overlap(supercell1, supercell2):
             else:
                 supercell2["row_numbers"] = []
                 common_rows = set()
+
+@njit
+def njit_overlaps(bbox1: Sequence[float], bbox2: Sequence[float], threshold: float = 0.5) -> bool:
+    """
+    Test if more than "threshold" fraction of bbox1 overlaps with bbox2.
+
+    bbox1, bbox2: [x_min, y_min, x_max, y_max]
+    """
+    # Calculate area for bbox1
+    x_min1, y_min1, x_max1, y_max1 = bbox1
+    area1 = max((x_max1 - x_min1), 0) * max((y_max1 - y_min1), 0)
+    if area1 == 0:
+        return False
+
+    # Compute intersection
+    x_min = max(x_min1, bbox2[0])
+    y_min = max(y_min1, bbox2[1])
+    x_max = min(x_max1, bbox2[2])
+    y_max = min(y_max1, bbox2[3])
+    inter_width = max(x_max - x_min, 0)
+    inter_height = max(y_max - y_min, 0)
+    inter_area = inter_width * inter_height
+
+    return (inter_area / area1) >= threshold
