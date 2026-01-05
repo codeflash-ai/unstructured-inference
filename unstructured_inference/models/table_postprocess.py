@@ -6,6 +6,7 @@ from collections import defaultdict
 
 
 class Rect:
+    
     def __init__(self, bbox=None):
         if bbox is None:
             self.x_min = 0
@@ -46,19 +47,23 @@ class Rect:
 
     def include_rect(self, bbox):
         """Calculates a rectangle that includes both rectangles"""
-        other = Rect(bbox)
+        other_x_min = bbox[0]
+        other_y_min = bbox[1]
+        other_x_max = bbox[2]
+        other_y_max = bbox[3]
+
 
         if self.get_area() == 0:
-            self.x_min = other.x_min
-            self.y_min = other.y_min
-            self.x_max = other.x_max
-            self.y_max = other.y_max
+            self.x_min = other_x_min
+            self.y_min = other_y_min
+            self.x_max = other_x_max
+            self.y_max = other_y_max
             return self
 
-        self.x_min = min(self.x_min, other.x_min)
-        self.y_min = min(self.y_min, other.y_min)
-        self.x_max = max(self.x_max, other.x_max)
-        self.y_max = max(self.y_max, other.y_max)
+        self.x_min = min(self.x_min, other_x_min)
+        self.y_min = min(self.y_min, other_y_min)
+        self.x_max = max(self.x_max, other_x_max)
+        self.y_max = max(self.y_max, other_y_max)
 
         # if self.get_area() == 0:
         #     self.x_min = other.x_min
