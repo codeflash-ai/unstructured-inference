@@ -19,6 +19,7 @@ from unstructured_inference.utils import (
     LazyEvaluateInfo,
     download_if_needed_and_get_local_path,
 )
+from numba import njit
 
 YOLOX_LABEL_MAP = {
     0: ElementType.CAPTION,
@@ -219,6 +220,7 @@ def multiclass_nms_class_agnostic(boxes, scores, nms_thr, score_thr):
     return dets
 
 
+@njit(cache=True, fastmath=True)
 def nms(boxes, scores, nms_thr):
     """Single class NMS implemented in Numpy."""
     x1 = boxes[:, 0]
@@ -246,4 +248,4 @@ def nms(boxes, scores, nms_thr):
         inds = np.where(ovr <= nms_thr)[0]
         order = order[inds + 1]
 
-    return keep
+    return np.array(keep)
