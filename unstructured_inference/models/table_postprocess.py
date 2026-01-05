@@ -4,6 +4,9 @@ Copyright (C) 2021 Microsoft Corporation
 """
 from collections import defaultdict
 
+import numpy as np
+from numba import njit
+
 
 class Rect:
     def __init__(self, bbox=None):
@@ -166,21 +169,24 @@ def slot_into_containers(
     if len(container_objects) == 0 or len(package_objects) == 0:
         return container_assignments, package_assignments, best_match_scores
 
-    match_scores = defaultdict(dict)
-    for package_num, package in enumerate(package_objects):
+    # Convert bboxes to numpy arrays for vectorized operations
+    package_bboxes = np.array([pkg["bbox"] for pkg in package_objects], dtype=np.float64)
+    container_bboxes = np.array([cont["bbox"] for cont in container_objects], dtype=np.float64)
+    
+    # Compute all overlap scores at once using numba
+    overlap_scores = compute_overlap_matrix(package_bboxes, container_bboxes)
+    
+    for package_num in range(len(package_objects)):
         match_scores = []
-        package_rect = Rect(package["bbox"])
-        package_area = package_rect.get_area()
-        for container_num, container in enumerate(container_objects):
-            container_rect = Rect(container["bbox"])
-            intersect_area = container_rect.intersect(Rect(package["bbox"])).get_area()
-
-            if package_area > 0:
-                overlap_fraction = intersect_area / package_area
+        
+        for container_num in range(len(container_objects)):
+            overlap_fraction = overlap_scores[package_num, container_num]
+            
+            if overlap_fraction > 0:
 
                 match_scores.append(
                     {
-                        "container": container,
+                        "container": container_objects[container_num],
                         "container_num": container_num,
                         "score": overlap_fraction,
                     },
@@ -610,3 +616,48 @@ def remove_supercell_overlap(supercell1, supercell2):
             else:
                 supercell2["row_numbers"] = []
                 common_rows = set()
+
+
+@njit
+def get_rect_area(x_min, y_min, x_max, y_max):
+    """Calculates the area of the rectangle"""
+    area = (x_max - x_min) * (y_max - y_min)
+    return area if area > 0 else 0.0
+
+@njit
+def intersect_area(x_min1, y_min1, x_max1, y_max1, x_min2, y_min2, x_max2, y_max2):
+    """Calculates the intersection area between two rectangles"""
+    x_min_int = max(x_min1, x_min2)
+    y_min_int = max(y_min1, y_min2)
+    x_max_int = min(x_max1, x_max2)
+    y_max_int = min(y_max1, y_max2)
+    
+    if x_min_int > x_max_int or y_min_int > y_max_int:
+        return 0.0
+    
+    return get_rect_area(x_min_int, y_min_int, x_max_int, y_max_int)
+
+@njit
+def compute_overlap_matrix(package_bboxes, container_bboxes):
+    """Compute overlap scores between all packages and containers"""
+    num_packages = package_bboxes.shape[0]
+    num_containers = container_bboxes.shape[0]
+    overlap_scores = np.zeros((num_packages, num_containers), dtype=np.float64)
+    
+    for p in range(num_packages):
+        package_area = get_rect_area(
+            package_bboxes[p, 0], package_bboxes[p, 1],
+            package_bboxes[p, 2], package_bboxes[p, 3]
+        )
+        
+        if package_area > 0:
+            for c in range(num_containers):
+                intersect = intersect_area(
+                    package_bboxes[p, 0], package_bboxes[p, 1],
+                    package_bboxes[p, 2], package_bboxes[p, 3],
+                    container_bboxes[c, 0], container_bboxes[c, 1],
+                    container_bboxes[c, 2], container_bboxes[c, 3]
+                )
+                overlap_scores[p, c] = intersect / package_area
+    
+    return overlap_scores
