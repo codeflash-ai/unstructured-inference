@@ -15,6 +15,7 @@ from unstructured_inference.inference.elements import (
     TextRegions,
     coords_intersections,
 )
+import numba
 
 EPSILON_AREA = 1e-7
 
@@ -369,15 +370,8 @@ def intersection_areas_between_coords(
     threshold: float = 0.5,
 ):
     """compute intersection area and own areas for two groups of bounding boxes"""
-    x11, y11, x12, y12 = np.split(coords1, 4, axis=1)
-    x21, y21, x22, y22 = np.split(coords2, 4, axis=1)
-
-    xa = np.maximum(x11, np.transpose(x21))
-    ya = np.maximum(y11, np.transpose(y21))
-    xb = np.minimum(x12, np.transpose(x22))
-    yb = np.minimum(y12, np.transpose(y22))
-
-    return np.maximum((xb - xa), 0) * np.maximum((yb - ya), 0)
+    # Original uses np.split, but instead, we pass to optimized numba loop
+    return _intersection_areas_between_coords_numba(coords1, coords2)
 
 
 def clean_layoutelements(elements: LayoutElements, subregion_threshold: float = 0.5):
@@ -511,3 +505,26 @@ def clean_layoutelements_for_class(
         )
     final_elements = LayoutElements(element_coords=final_coords, **final_attrs)
     return final_elements
+
+
+
+@numba.njit(cache=True, nogil=True)
+def _intersection_areas_between_coords_numba(coords1: np.ndarray, coords2: np.ndarray) -> np.ndarray:
+    n1, _ = coords1.shape
+    n2, _ = coords2.shape
+    out = np.zeros((n1, n2), dtype=coords1.dtype)
+    for i in range(n1):
+        x11, y11, x12, y12 = coords1[i, 0], coords1[i, 1], coords1[i, 2], coords1[i, 3]
+        for j in range(n2):
+            x21, y21, x22, y22 = coords2[j, 0], coords2[j, 1], coords2[j, 2], coords2[j, 3]
+            xa = max(x11, x21)
+            ya = max(y11, y21)
+            xb = min(x12, x22)
+            yb = min(y12, y22)
+            dx = xb - xa
+            dy = yb - ya
+            area = 0.0
+            if dx > 0.0 and dy > 0.0:
+                area = dx * dy
+            out[i, j] = area
+    return out
