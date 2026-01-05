@@ -143,23 +143,36 @@ class UnstructuredObjectDetectionModel(UnstructuredModel):
         other_elements.sort(key=lambda e: e.bbox.area, reverse=True)
 
         # First check if targets contains each other
-        for element in target_elements:  # Just handles containment or little overlap
-            contains = [
-                e
-                for e in target_elements
-                if e.bbox.is_almost_subregion_of(element.bbox) and e != element
-            ]
-            for contained in contains:
-                target_elements.remove(contained)
+        # Use a set to track elements to remove instead of list.remove()
+        contained_indices = set()
+        for i, element in enumerate(target_elements):  # Just handles containment or little overlap
+            if i in contained_indices:
+                continue
+            element_bbox = element.bbox
+            for j in range(i + 1, len(target_elements)):
+                if j not in contained_indices:
+                    if target_elements[j].bbox.is_almost_subregion_of(element_bbox):
+                        contained_indices.add(j)
+        
+        # Rebuild target_elements without contained elements
+        target_elements = [e for i, e in enumerate(target_elements) if i not in contained_indices]
+        
+        # Pre-extract target bboxes to avoid repeated attribute lookups in loop
+        target_bboxes = [target.bbox for target in target_elements]
+        
         # Then check if remaining elements intersect with targets
-        other_elements = filter(
-            lambda e: not any(
-                e.bbox.is_almost_subregion_of(target.bbox) for target in target_elements
-            ),
-            other_elements,
-        )  # type:ignore
-
-        final_elements = list(other_elements)
+        # Build final_elements directly instead of using filter
+        final_elements = []
+        for e in other_elements:
+            e_bbox = e.bbox
+            is_subregion = False
+            for target_bbox in target_bboxes:
+                if e_bbox.is_almost_subregion_of(target_bbox):
+                    is_subregion = True
+                    break
+            if not is_subregion:
+                final_elements.append(e)
+        
         final_elements.extend(target_elements)
         # Note(benjamin): could use bisect.insort,
         # but need to add < operator for
