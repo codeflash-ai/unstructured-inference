@@ -140,10 +140,26 @@ class Rectangle:
 
 def minimal_containing_region(*regions: Rectangle) -> Rectangle:
     """Returns the smallest rectangular region that contains all regions passed"""
-    x1 = min(region.x1 for region in regions)
-    y1 = min(region.y1 for region in regions)
-    x2 = max(region.x2 for region in regions)
-    y2 = max(region.y2 for region in regions)
+    it = iter(regions)
+    try:
+        region = next(it)
+    except StopIteration:
+        raise ValueError("min() arg is an empty sequence")
+
+    x1 = region.x1
+    y1 = region.y1
+    x2 = region.x2
+    y2 = region.y2
+
+    for region in it:
+        if region.x1 < x1:
+            x1 = region.x1
+        if region.y1 < y1:
+            y1 = region.y1
+        if region.x2 > x2:
+            x2 = region.x2
+        if region.y2 > y2:
+            y2 = region.y2
 
     return Rectangle(x1, y1, x2, y2)
 
