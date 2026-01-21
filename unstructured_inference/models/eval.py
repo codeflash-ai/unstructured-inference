@@ -14,7 +14,7 @@ EVAL_FUNCTIONS = {
 
 def _join_df_content(df, tab_token="\t", row_break_token="\n") -> str:
     """joining dataframe's table content as one long string"""
-    return row_break_token.join([tab_token.join(row) for row in df.values])
+    return row_break_token.join(map(tab_token.join, df.values))
 
 
 def default_tokenizer(text: str) -> List[str]:
