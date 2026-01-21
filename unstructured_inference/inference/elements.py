@@ -113,8 +113,25 @@ class Rectangle:
         """Gives the intersection-over-union of two rectangles. This tends to be a good metric of
         how similar the regions are. Returns 0 for disjoint rectangles, 1 for two identical
         rectangles -- area of intersection / area of union."""
-        intersection = self.intersection(other)
-        intersection_area = 0.0 if intersection is None else intersection.area
+        # Fast-path: compute intersection area directly from coordinates to avoid allocating a
+        # temporary Rectangle (common case). If the expected coordinate attributes are not
+        # available, fall back to the original intersection() call to preserve behavior.
+        try:
+            # Use direct comparisons instead of builtins to avoid extra calls; semantics match
+            # Rectangle.intersection from elements.py.
+            x1 = self.x1 if self.x1 >= other.x1 else other.x1
+            x2 = self.x2 if self.x2 <= other.x2 else other.x2
+            y1 = self.y1 if self.y1 >= other.y1 else other.y1
+            y2 = self.y2 if self.y2 <= other.y2 else other.y2
+        except AttributeError:
+            intersection = self.intersection(other)
+            intersection_area = 0.0 if intersection is None else intersection.area
+        else:
+            if x1 > x2 or y1 > y2:
+                intersection_area = 0.0
+            else:
+                intersection_area = (x2 - x1) * (y2 - y1)
+
         union_area = self.area + other.area - intersection_area
         return safe_division(intersection_area, union_area)
 
