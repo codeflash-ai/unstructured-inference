@@ -153,7 +153,20 @@ def intersections(*rects: Rectangle):
     the ijth entry of the matrix is True if and only if the ith Rectangle and jth Rectangle
     intersect."""
     # NOTE(alan): Rewrite using line scan
-    coords = np.array([[r.x1, r.y1, r.x2, r.y2] for r in rects])
+    if not rects:
+        # Preserve original behavior for empty input: np.array([]) (1-D) so downstream indexing fails the same way.
+        coords = np.array([])
+    else:
+        n = len(rects)
+        # Pre-allocate a numeric array to avoid creating an intermediate Python list,
+        # which reduces allocations and speeds up construction for large inputs.
+        coords = np.empty((n, 4), dtype=float)
+        for i, r in enumerate(rects):
+            coords[i, 0] = r.x1
+            coords[i, 1] = r.y1
+            coords[i, 2] = r.x2
+            coords[i, 3] = r.y2
+
     return coords_intersections(coords)
 
 
@@ -170,12 +183,16 @@ def coords_intersections(coords: np.ndarray) -> np.ndarray:
     # r2.x1 > r1.x2
     # r2.y1 > r1.y2
     # Then we take the complement (~) of the disjointness matrix to get the intersection matrix.
-    intersections = ~(
-        (x1s[None] > x2s[..., None])
-        | (y1s[None] > y2s[..., None])
-        | (x1s[None] > x2s[..., None]).T
-        | (y1s[None] > y2s[..., None]).T
-    )
+    # Compute the two basic disjointness matrices once, combine them in-place, mirror them via transpose,
+    # and invert to get intersections. This reduces temporaries and repeated broadcasts.
+    a = x1s[:, None] > x2s[None, :]  # r1.x1 > r2.x2
+    b = y1s[:, None] > y2s[None, :]  # r1.y1 > r2.y2
+    a |= b  # now a holds (r1.x1 > r2.x2) | (r1.y1 > r2.y2)
+    # free b reference early to reduce peak memory (optional)
+    del b
+    a |= a.T  # include the transposed conditions (r2.x1 > r1.x2) | (r2.y1 > r1.y2)
+
+    intersections = ~a
 
     return intersections
 
