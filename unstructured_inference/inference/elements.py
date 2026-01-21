@@ -170,12 +170,8 @@ def coords_intersections(coords: np.ndarray) -> np.ndarray:
     # r2.x1 > r1.x2
     # r2.y1 > r1.y2
     # Then we take the complement (~) of the disjointness matrix to get the intersection matrix.
-    intersections = ~(
-        (x1s[None] > x2s[..., None])
-        | (y1s[None] > y2s[..., None])
-        | (x1s[None] > x2s[..., None]).T
-        | (y1s[None] > y2s[..., None]).T
-    )
+    upper_disjoint = (x1s[:, None] > x2s[None, :]) | (y1s[:, None] > y2s[None, :])
+    intersections = ~(upper_disjoint | upper_disjoint.T)
 
     return intersections
 
