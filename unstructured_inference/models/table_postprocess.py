@@ -25,7 +25,7 @@ class Rect:
 
     def intersect(self, other):
         """Calculates the intersection with another rectangle"""
-        if self.get_area() == 0:
+        if self.x_min >= self.x_max or self.y_min >= self.y_max:
             self.x_min = other.x_min
             self.y_min = other.y_min
             self.x_max = other.x_max
@@ -36,7 +36,7 @@ class Rect:
             self.x_max = min(self.x_max, other.x_max)
             self.y_max = min(self.y_max, other.y_max)
 
-            if self.x_min > self.x_max or self.y_min > self.y_max or self.get_area() == 0:
+            if self.x_min >= self.x_max or self.y_min >= self.y_max:
                 self.x_min = 0
                 self.y_min = 0
                 self.x_max = 0
