@@ -20,7 +20,7 @@ class InferenceConfig:
         return os.environ.get(var, default_value)
 
     def _get_int(self, var: str, default_value: int) -> int:
-        if value := self._get_string(var):
+        if value := os.environ.get(var):
             return int(value)
         return default_value
 
