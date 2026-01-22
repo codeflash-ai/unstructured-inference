@@ -366,21 +366,48 @@ def nms(objects, match_criteria="object2_overlap", match_threshold=0.05, keep_hi
     num_objects = len(objects)
     suppression = [False for obj in objects]
 
+
+    # Pre-compute all bounding boxes and areas to avoid repeated calculations
+    bboxes = [obj["bbox"] for obj in objects]
+    areas = [
+        max(0.0, (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]))
+        for bbox in bboxes
+    ]
+
     for object2_num in range(1, num_objects):
-        object2_rect = Rect(objects[object2_num]["bbox"])
-        object2_area = object2_rect.get_area()
+        bbox2 = bboxes[object2_num]
+        area2 = areas[object2_num]
+        x2_min, y2_min, x2_max, y2_max = bbox2[0], bbox2[1], bbox2[2], bbox2[3]
+        
         for object1_num in range(object2_num):
             if not suppression[object1_num]:
-                object1_rect = Rect(objects[object1_num]["bbox"])
-                object1_area = object1_rect.get_area()
-                intersect_area = object1_rect.intersect(object2_rect).get_area()
+                bbox1 = bboxes[object1_num]
+                area1 = areas[object1_num]
+                x1_min, y1_min, x1_max, y1_max = bbox1[0], bbox1[1], bbox1[2], bbox1[3]
+                
+                # Inline intersection calculation with special handling for zero-area boxes
+                # This mimics the behavior of the Rect.intersect method
+                if area1 == 0:
+                    # If object1 has zero area, intersection becomes object2's area
+                    intersect_area = area2
+                else:
+                    intersect_x_min = max(x1_min, x2_min)
+                    intersect_y_min = max(y1_min, y2_min)
+                    intersect_x_max = min(x1_max, x2_max)
+                    intersect_y_max = min(y1_max, y2_max)
+                    
+                    if intersect_x_min < intersect_x_max and intersect_y_min < intersect_y_max:
+                        intersect_area = (intersect_x_max - intersect_x_min) * (intersect_y_max - intersect_y_min)
+                    else:
+                        intersect_area = 0.0
+                
                 try:
                     if match_criteria == "object1_overlap":
-                        metric = intersect_area / object1_area
+                        metric = intersect_area / area1
                     elif match_criteria == "object2_overlap":
-                        metric = intersect_area / object2_area
+                        metric = intersect_area / area2
                     elif match_criteria == "iou":
-                        metric = intersect_area / (object1_area + object2_area - intersect_area)
+                        metric = intersect_area / (area1 + area2 - intersect_area)
                     if metric >= match_threshold:
                         suppression[object2_num] = True
                         break
