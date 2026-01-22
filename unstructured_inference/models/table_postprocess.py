@@ -321,8 +321,9 @@ def align_columns(columns, bbox):
     """
     try:
         for column in columns:
-            column["bbox"][1] = bbox[1]
-            column["bbox"][3] = bbox[3]
+            column_bbox = column["bbox"]
+            column_bbox[1] = bbox[1]
+            column_bbox[3] = bbox[3]
     except Exception as err:
         print(f"Could not align columns: {err}")
         pass
