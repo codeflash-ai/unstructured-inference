@@ -5,7 +5,7 @@ from io import StringIO
 from typing import Any, Callable, Hashable, Iterable, Iterator, Union
 
 from huggingface_hub import hf_hub_download
-from PIL import Image
+from PIL import Image, ImageOps
 
 from unstructured_inference.inference.layoutelement import LayoutElement
 
@@ -74,8 +74,13 @@ def pad_image_with_background_color(
         raise ValueError(
             "Can not pad an image with negative space! Please use a positive value for `pad`.",
         )
-    new = Image.new(image.mode, (width + pad * 2, height + pad * 2), background_color)
-    new.paste(image, (pad, pad))
+    # Fast-path: if no padding requested, return a copy rather than creating a new image and pasting.
+    if pad == 0:
+        new = image.copy()
+        return new
+
+    # Use PIL's ImageOps.expand which delegates border creation to an optimized implementation.
+    new = ImageOps.expand(image, border=pad, fill=background_color)
     return new
 
 
