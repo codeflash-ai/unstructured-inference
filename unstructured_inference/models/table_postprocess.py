@@ -337,8 +337,9 @@ def align_rows(rows, bbox):
     """
     try:
         for row in rows:
-            row["bbox"][0] = bbox[0]
-            row["bbox"][2] = bbox[2]
+            rb = row["bbox"]
+            rb[0] = bbox[0]
+            rb[2] = bbox[2]
     except Exception as err:
         print(f"Could not align rows: {err}")
         pass
