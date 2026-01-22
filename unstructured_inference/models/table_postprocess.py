@@ -166,34 +166,55 @@ def slot_into_containers(
     if len(container_objects) == 0 or len(package_objects) == 0:
         return container_assignments, package_assignments, best_match_scores
 
-    match_scores = defaultdict(dict)
+    # Pre-extract container bboxes for faster access and fewer dict lookups
+    container_bboxes = [container["bbox"] for container in container_objects]
+
     for package_num, package in enumerate(package_objects):
-        match_scores = []
-        package_rect = Rect(package["bbox"])
-        package_area = package_rect.get_area()
-        for container_num, container in enumerate(container_objects):
-            container_rect = Rect(container["bbox"])
-            intersect_area = container_rect.intersect(Rect(package["bbox"])).get_area()
+        pkg_bbox = package["bbox"]
+        px_min, py_min, px_max, py_max = pkg_bbox
+        package_area = (px_max - px_min) * (py_max - py_min)
+        if package_area <= 0:
+            # If package has zero or negative area, behave like original: skip
+            continue
 
-            if package_area > 0:
-                overlap_fraction = intersect_area / package_area
+        # Single-pass search for the best container (avoid building per-package lists and sorting)
+        best_score = float("-inf")
+        best_container_num = None
 
-                match_scores.append(
-                    {
-                        "container": container,
-                        "container_num": container_num,
-                        "score": overlap_fraction,
-                    },
-                )
+        for container_num, (cx_min, cy_min, cx_max, cy_max) in enumerate(container_bboxes):
+            # Check if container has zero area
+            container_area = (cx_max - cx_min) * (cy_max - cy_min)
+            
+            if container_area == 0:
+                # Special case: zero-area container behaves as full match with the package
+                # This mimics the original Rect.intersect() behavior where if self.get_area() == 0,
+                # it copies the other rectangle's coordinates, resulting in intersect_area = package_area
+                intersect_area = package_area
+            else:
+                # compute intersection
+                ix_min = cx_min if cx_min > px_min else px_min
+                iy_min = cy_min if cy_min > py_min else py_min
+                ix_max = cx_max if cx_max < px_max else px_max
+                iy_max = cy_max if cy_max < py_max else py_max
 
-        if len(match_scores) > 0:
-            sorted_match_scores = sort_objects_by_score(match_scores)
+                if ix_min >= ix_max or iy_min >= iy_max:
+                    intersect_area = 0.0
+                else:
+                    intersect_area = (ix_max - ix_min) * (iy_max - iy_min)
 
-            best_match_score = sorted_match_scores[0]
-            best_match_scores.append(best_match_score["score"])
-            if forced_assignment or best_match_score["score"] >= overlap_threshold:
-                container_assignments[best_match_score["container_num"]].append(package_num)
-                package_assignments[package_num].append(best_match_score["container_num"])
+            overlap_fraction = intersect_area / package_area
+
+            if overlap_fraction > best_score:
+                best_score = overlap_fraction
+                best_container_num = container_num
+
+        # At least one container exists (we checked earlier), so best_container_num must be set
+        if best_container_num is not None:
+            best_match_scores.append(best_score)
+            if forced_assignment or best_score >= overlap_threshold:
+                container_assignments[best_container_num].append(package_num)
+                package_assignments[package_num].append(best_container_num)
+
 
     return container_assignments, package_assignments, best_match_scores
 
