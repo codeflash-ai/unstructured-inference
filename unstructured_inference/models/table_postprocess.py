@@ -272,9 +272,7 @@ def extract_text_from_spans(spans, join_with_space=True, remove_integer_superscr
     if len(spans_copy) == 0:
         return ""
 
-    spans_copy.sort(key=lambda span: span["span_num"])
-    spans_copy.sort(key=lambda span: span["line_num"])
-    spans_copy.sort(key=lambda span: span["block_num"])
+    spans_copy.sort(key=lambda span: (span["block_num"], span["line_num"], span["span_num"]))
 
     # Force the span at the end of every line within a block to have exactly one space
     # unless the line ends with a space or ends with a non-space followed by a hyphen
