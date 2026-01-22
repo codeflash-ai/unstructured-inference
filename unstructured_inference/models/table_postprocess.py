@@ -3,6 +3,7 @@
 Copyright (C) 2021 Microsoft Corporation
 """
 from collections import defaultdict
+from operator import itemgetter
 
 
 class Rect:
@@ -202,7 +203,7 @@ def sort_objects_by_score(objects, reverse=True):
     """
     Put any set of objects in order from high score to low score.
     """
-    return sorted(objects, key=lambda k: k["score"], reverse=reverse)
+    return sorted(objects, key=itemgetter("score"), reverse=reverse)
 
 
 def remove_objects_without_content(page_spans, objects):
