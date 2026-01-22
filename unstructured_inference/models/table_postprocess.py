@@ -232,10 +232,8 @@ def get_bbox_span_subset(spans, bbox, threshold=0.5):
 
     threshold: the fraction of the span that must overlap with the bbox.
     """
-    span_subset = []
-    for span in spans:
-        if overlaps(span["bbox"], bbox, threshold):
-            span_subset.append(span)
+    # Use a list comprehension to reduce Python-level loop and append overhead
+    span_subset = [span for span in spans if overlaps(span["bbox"], bbox, threshold)]
     return span_subset
 
 
@@ -243,11 +241,37 @@ def overlaps(bbox1, bbox2, threshold=0.5):
     """
     Test if more than "threshold" fraction of bbox1 overlaps with bbox2.
     """
-    rect1 = Rect(list(bbox1))
-    area1 = rect1.get_area()
-    if area1 == 0:
+    # Index into the sequences rather than constructing Rect objects to avoid allocations.
+    # Use indexing to preserve the same exception behavior (IndexError) as the original code
+    x_min1 = bbox1[0]
+    y_min1 = bbox1[1]
+    x_max1 = bbox1[2]
+    y_max1 = bbox1[3]
+
+    area1 = (x_max1 - x_min1) * (y_max1 - y_min1)
+    # Original Rect.get_area returned 0 for non-positive area; treat non-positive same way.
+    if area1 <= 0:
         return False
-    return rect1.intersect(Rect(list(bbox2))).get_area() / area1 >= threshold
+
+    x_min2 = bbox2[0]
+    y_min2 = bbox2[1]
+    x_max2 = bbox2[2]
+    y_max2 = bbox2[3]
+
+    # Compute intersection rectangle
+    ix_min = x_min1 if x_min1 > x_min2 else x_min2
+    iy_min = y_min1 if y_min1 > y_min2 else y_min2
+    ix_max = x_max1 if x_max1 < x_max2 else x_max2
+    iy_max = y_max1 if y_max1 < y_max2 else y_max2
+
+    if ix_min > ix_max or iy_min > iy_max:
+        inter_area = 0.0
+    else:
+        inter_area = (ix_max - ix_min) * (iy_max - iy_min)
+        if inter_area <= 0:
+            inter_area = 0.0
+
+    return inter_area / area1 >= threshold
 
 
 def extract_text_from_spans(spans, join_with_space=True, remove_integer_superscripts=True):
