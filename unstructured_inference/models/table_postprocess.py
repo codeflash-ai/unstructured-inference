@@ -72,6 +72,29 @@ class Rect:
         """Returns the coordinates that define the rectangle"""
         return [self.x_min, self.y_min, self.x_max, self.y_max]
 
+    def include_rect(self, bbox):
+        """
+        Expands this rectangle to include another bbox.
+        Returns self for chaining, preserving original behavior.
+        """
+        # If this rect is empty, adopt the bbox directly
+        if self.get_area() == 0:
+            self.x_min = bbox[0]
+            self.y_min = bbox[1]
+            self.x_max = bbox[2]
+            self.y_max = bbox[3]
+        else:
+            # Expand to include bbox
+            if bbox[0] < self.x_min:
+                self.x_min = bbox[0]
+            if bbox[1] < self.y_min:
+                self.y_min = bbox[1]
+            if bbox[2] > self.x_max:
+                self.x_max = bbox[2]
+            if bbox[3] > self.y_max:
+                self.y_max = bbox[3]
+        return self
+
 
 def apply_threshold(objects, threshold):
     """
@@ -399,27 +422,43 @@ def align_supercells(supercells, rows, columns):
     """
     aligned_supercells = []
 
+
+    # Precompute row and column metrics to avoid repeated indexing in tight loops
+    rows_info = []
+    for row in rows:
+        rb = row["bbox"]
+        # keep reference to original row dict for header checks
+        rows_info.append((rb[1], rb[3], rb[3] - rb[1], row))
+
+    columns_info = []
+    for col in columns:
+        cb = col["bbox"]
+        columns_info.append((cb[0], cb[2], cb[2] - cb[0], col))
+
     for supercell in supercells:
         supercell["header"] = False
         row_bbox_rect = None
         col_bbox_rect = None
         intersecting_header_rows = set()
         intersecting_data_rows = set()
-        for row_num, row in enumerate(rows):
-            row_height = row["bbox"][3] - row["bbox"][1]
-            supercell_height = supercell["bbox"][3] - supercell["bbox"][1]
-            min_row_overlap = max(row["bbox"][1], supercell["bbox"][1])
-            max_row_overlap = min(row["bbox"][3], supercell["bbox"][3])
+
+        sb = supercell["bbox"]
+        sc_ymin = sb[1]
+        sc_ymax = sb[3]
+        sc_height = sc_ymax - sc_ymin
+
+        for row_num, (r_ymin, r_ymax, r_height, row_dict) in enumerate(rows_info):
+            min_row_overlap = r_ymin if r_ymin > sc_ymin else sc_ymin
+            max_row_overlap = r_ymax if r_ymax < sc_ymax else sc_ymax
             overlap_height = max_row_overlap - min_row_overlap
             if "span" in supercell:
-                overlap_fraction = max(
-                    overlap_height / row_height,
-                    overlap_height / supercell_height,
-                )
+                # preserve original division semantics (may raise ZeroDivisionError if heights are 0)
+                overlap_fraction = max(overlap_height / r_height, overlap_height / sc_height)
             else:
-                overlap_fraction = overlap_height / row_height
+                overlap_fraction = overlap_height / r_height
+
             if overlap_fraction >= 0.5:
-                if "header" in row and row["header"]:
+                if "header" in row_dict and row_dict["header"]:
                     intersecting_header_rows.add(row_num)
                 else:
                     intersecting_data_rows.add(row_num)
@@ -438,38 +477,97 @@ def align_supercells(supercells, rows, columns):
             continue  # Require span supercell to be in the header
         intersecting_rows = intersecting_data_rows.union(intersecting_header_rows)
         # Determine vertical span of aligned supercell
+
+        # Determine vertical span of aligned supercell using numeric bbox aggregation
+        if not intersecting_rows:
+            continue
+
+        # Aggregate row bbox
+        first_row = True
+        row_ymin_agg = 0
+        row_ymax_agg = 0
+        row_xmin_agg = None  # will be computed from original row bboxes
+        row_xmax_agg = None
         for row_num in intersecting_rows:
-            if row_bbox_rect is None:
-                row_bbox_rect = Rect(rows[row_num]["bbox"])
+            rb = rows[row_num]["bbox"]
+            if first_row:
+                row_xmin_agg = rb[0]
+                row_ymin_agg = rb[1]
+                row_xmax_agg = rb[2]
+                row_ymax_agg = rb[3]
+                first_row = False
             else:
-                row_bbox_rect = row_bbox_rect.include_rect(rows[row_num]["bbox"])
-        if row_bbox_rect is None:
+                if rb[0] < row_xmin_agg:
+                    row_xmin_agg = rb[0]
+                if rb[1] < row_ymin_agg:
+                    row_ymin_agg = rb[1]
+                if rb[2] > row_xmax_agg:
+                    row_xmax_agg = rb[2]
+                if rb[3] > row_ymax_agg:
+                    row_ymax_agg = rb[3]
+
+        # If somehow no rows were aggregated, continue (shouldn't happen due to check above)
+        if first_row:
             continue
 
         intersecting_cols = []
-        for col_num, col in enumerate(columns):
-            col_width = col["bbox"][2] - col["bbox"][0]
-            supercell_width = supercell["bbox"][2] - supercell["bbox"][0]
-            min_col_overlap = max(col["bbox"][0], supercell["bbox"][0])
-            max_col_overlap = min(col["bbox"][2], supercell["bbox"][2])
+        # Process columns similarly; aggregate numeric bbox
+        first_col = True
+        col_xmin_agg = 0
+        col_xmax_agg = 0
+        col_ymin_agg = None
+        col_ymax_agg = None
+        sc_xmin = sb[0]
+        sc_xmax = sb[2]
+        sc_width = sc_xmax - sc_xmin
+
+        for col_num, (c_xmin, c_xmax, c_width, col_dict) in enumerate(columns_info):
+            min_col_overlap = c_xmin if c_xmin > sc_xmin else sc_xmin
+            max_col_overlap = c_xmax if c_xmax < sc_xmax else sc_xmax
             overlap_width = max_col_overlap - min_col_overlap
             if "span" in supercell:
-                overlap_fraction = max(overlap_width / col_width, overlap_width / supercell_width)
+                overlap_fraction = max(overlap_width / c_width, overlap_width / sc_width)
+                # Multiply by 2 effectively lowers the threshold to 0.25
                 # Multiply by 2 effectively lowers the threshold to 0.25
                 if supercell["header"]:
                     overlap_fraction = overlap_fraction * 2
             else:
-                overlap_fraction = overlap_width / col_width
+                overlap_fraction = overlap_width / c_width
+
             if overlap_fraction >= 0.5:
                 intersecting_cols.append(col_num)
-                if col_bbox_rect is None:
-                    col_bbox_rect = Rect(col["bbox"])
+                cb = columns[col_num]["bbox"]
+                if first_col:
+                    col_xmin_agg = cb[0]
+                    col_ymin_agg = cb[1]
+                    col_xmax_agg = cb[2]
+                    col_ymax_agg = cb[3]
+                    first_col = False
                 else:
-                    col_bbox_rect = col_bbox_rect.include_rect(col["bbox"])
-        if col_bbox_rect is None:
+                    if cb[0] < col_xmin_agg:
+                        col_xmin_agg = cb[0]
+                    if cb[1] < col_ymin_agg:
+                        col_ymin_agg = cb[1]
+                    if cb[2] > col_xmax_agg:
+                        col_xmax_agg = cb[2]
+                    if cb[3] > col_ymax_agg:
+                        col_ymax_agg = cb[3]
+
+        if first_col:
             continue
 
-        supercell_bbox = row_bbox_rect.intersect(col_bbox_rect).get_bbox()
+        # Compute intersection bbox between aggregated row bbox and column bbox
+        inter_xmin = row_xmin_agg if row_xmin_agg > col_xmin_agg else col_xmin_agg
+        inter_ymin = row_ymin_agg if row_ymin_agg > col_ymin_agg else col_ymin_agg
+        inter_xmax = row_xmax_agg if row_xmax_agg < col_xmax_agg else col_xmax_agg
+        inter_ymax = row_ymax_agg if row_ymax_agg < col_ymax_agg else col_ymax_agg
+
+        # If intersection is invalid or zero area, produce zero bbox (preserve original logic)
+        if inter_xmin > inter_xmax or inter_ymin > inter_ymax or (inter_xmax - inter_xmin) * (inter_ymax - inter_ymin) == 0:
+            supercell_bbox = [0, 0, 0, 0]
+        else:
+            supercell_bbox = [inter_xmin, inter_ymin, inter_xmax, inter_ymax]
+
         supercell["bbox"] = supercell_bbox
 
         # Only a true supercell if it joins across multiple rows or columns
