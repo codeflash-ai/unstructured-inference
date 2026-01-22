@@ -125,7 +125,8 @@ def nms_by_containment(container_objects, package_objects, overlap_threshold=0.5
     """
     container_objects = sort_objects_by_score(container_objects)
     num_objects = len(container_objects)
-    suppression = [False for obj in container_objects]
+    suppression = [False] * num_objects
+
 
     packages_by_container, _, _ = slot_into_containers(
         container_objects,
@@ -134,15 +135,24 @@ def nms_by_containment(container_objects, package_objects, overlap_threshold=0.5
         forced_assignment=False,
     )
 
+
+    # convert package lists to sets once to avoid repeated set construction
+    package_sets_by_container = [set(pkgs) for pkgs in packages_by_container]
+
     for object2_num in range(1, num_objects):
-        object2_packages = set(packages_by_container[object2_num])
+        object2_packages = package_sets_by_container[object2_num]
         if len(object2_packages) == 0:
             suppression[object2_num] = True
+            continue
+
+        # check against earlier, non-suppressed containers
         for object1_num in range(object2_num):
             if not suppression[object1_num]:
-                object1_packages = set(packages_by_container[object1_num])
-                if len(object2_packages.intersection(object1_packages)) > 0:
+                # reuse precomputed sets
+                if object2_packages.intersection(package_sets_by_container[object1_num]):
                     suppression[object2_num] = True
+
+                    break
 
     final_objects = [obj for idx, obj in enumerate(container_objects) if not suppression[idx]]
     return final_objects
@@ -166,34 +176,48 @@ def slot_into_containers(
     if len(container_objects) == 0 or len(package_objects) == 0:
         return container_assignments, package_assignments, best_match_scores
 
-    match_scores = defaultdict(dict)
-    for package_num, package in enumerate(package_objects):
-        match_scores = []
-        package_rect = Rect(package["bbox"])
-        package_area = package_rect.get_area()
-        for container_num, container in enumerate(container_objects):
-            container_rect = Rect(container["bbox"])
-            intersect_area = container_rect.intersect(Rect(package["bbox"])).get_area()
+    # Pre-extract container bboxes to avoid repeated dict lookups and Rect allocations
+    container_bboxes = [container["bbox"] for container in container_objects]
 
-            if package_area > 0:
+    for package_num, package in enumerate(package_objects):
+        pkg_bbox = package["bbox"]
+        px0, py0, px1, py1 = pkg_bbox
+        pkg_w = px1 - px0
+        pkg_h = py1 - py0
+        package_area = pkg_w * pkg_h if (pkg_w > 0 and pkg_h > 0) else 0.0
+
+        # Track best match (score and container_num) without building a full match list
+        best_score = -1.0
+        best_container_num = None
+
+        if package_area > 0:
+            for container_num, cb in enumerate(container_bboxes):
+                cx0, cy0, cx1, cy1 = cb
+
+                ix0 = px0 if px0 > cx0 else cx0
+                iy0 = py0 if py0 > cy0 else cy0
+                ix1 = px1 if px1 < cx1 else cx1
+                iy1 = py1 if py1 < cy1 else cy1
+
+                iw = ix1 - ix0
+                ih = iy1 - iy0
+                if iw <= 0 or ih <= 0:
+                    continue
+
+                intersect_area = iw * ih
                 overlap_fraction = intersect_area / package_area
 
-                match_scores.append(
-                    {
-                        "container": container,
-                        "container_num": container_num,
-                        "score": overlap_fraction,
-                    },
-                )
+                # keep the first container encountered in case of tie (stable behavior)
+                if overlap_fraction > best_score:
+                    best_score = overlap_fraction
+                    best_container_num = container_num
 
-        if len(match_scores) > 0:
-            sorted_match_scores = sort_objects_by_score(match_scores)
+        if best_container_num is not None and best_score >= 0.0:
+            best_match_scores.append(best_score)
+            if forced_assignment or best_score >= overlap_threshold:
+                container_assignments[best_container_num].append(package_num)
+                package_assignments[package_num].append(best_container_num)
 
-            best_match_score = sorted_match_scores[0]
-            best_match_scores.append(best_match_score["score"])
-            if forced_assignment or best_match_score["score"] >= overlap_threshold:
-                container_assignments[best_match_score["container_num"]].append(package_num)
-                package_assignments[package_num].append(best_match_score["container_num"])
 
     return container_assignments, package_assignments, best_match_scores
 
