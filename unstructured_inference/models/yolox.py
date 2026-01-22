@@ -233,17 +233,22 @@ def nms(boxes, scores, nms_thr):
     while order.size > 0:
         i = order[0]
         keep.append(i)
-        xx1 = np.maximum(x1[i], x1[order[1:]])
-        yy1 = np.maximum(y1[i], y1[order[1:]])
-        xx2 = np.minimum(x2[i], x2[order[1:]])
-        yy2 = np.minimum(y2[i], y2[order[1:]])
+        
+        # Extract remaining boxes for comparison
+        rest = order[1:]
+        xx1 = np.maximum(x1[i], x1[rest])
+        yy1 = np.maximum(y1[i], y1[rest])
+        xx2 = np.minimum(x2[i], x2[rest])
+        yy2 = np.minimum(y2[i], y2[rest])
+
 
         w = np.maximum(0.0, xx2 - xx1 + 1)
         h = np.maximum(0.0, yy2 - yy1 + 1)
         inter = w * h
-        ovr = inter / (areas[i] + areas[order[1:]] - inter)
+        ovr = inter / (areas[i] + areas[rest] - inter)
 
-        inds = np.where(ovr <= nms_thr)[0]
-        order = order[inds + 1]
+        # Use boolean indexing instead of np.where
+        mask = ovr <= nms_thr
+        order = rest[mask]
 
     return keep
