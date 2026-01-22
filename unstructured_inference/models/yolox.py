@@ -211,6 +211,13 @@ def multiclass_nms_class_agnostic(boxes, scores, nms_thr, score_thr):
     valid_scores = cls_scores[valid_score_mask]
     valid_boxes = boxes[valid_score_mask]
     valid_cls_inds = cls_inds[valid_score_mask]
+    # Quick path for no valid detections
+    if valid_scores.size == 0:
+        # Preserve original behavior: return an empty array with correct number of columns
+        return np.concatenate(
+            [valid_boxes[:0], valid_scores[:0, None], valid_cls_inds[:0, None]],
+            1,
+        )
     keep = nms(valid_boxes, valid_scores, nms_thr)
     dets = np.concatenate(
         [valid_boxes[keep], valid_scores[keep, None], valid_cls_inds[keep, None]],
@@ -221,6 +228,9 @@ def multiclass_nms_class_agnostic(boxes, scores, nms_thr, score_thr):
 
 def nms(boxes, scores, nms_thr):
     """Single class NMS implemented in Numpy."""
+    if boxes.size == 0:
+        return []
+
     x1 = boxes[:, 0]
     y1 = boxes[:, 1]
     x2 = boxes[:, 2]
@@ -233,17 +243,29 @@ def nms(boxes, scores, nms_thr):
     while order.size > 0:
         i = order[0]
         keep.append(i)
-        xx1 = np.maximum(x1[i], x1[order[1:]])
-        yy1 = np.maximum(y1[i], y1[order[1:]])
-        xx2 = np.minimum(x2[i], x2[order[1:]])
-        yy2 = np.minimum(y2[i], y2[order[1:]])
+        # If this was the last box, break early to avoid extra work/slicing
+        if order.size == 1:
+            break
 
-        w = np.maximum(0.0, xx2 - xx1 + 1)
-        h = np.maximum(0.0, yy2 - yy1 + 1)
+        # Reuse the "remaining" slice to avoid repeating order[1:] multiple times
+        rem = order[1:]
+
+        # Compute intersections with the remaining boxes
+        xx1 = np.maximum(x1[i], x1[rem])
+        yy1 = np.maximum(y1[i], y1[rem])
+        xx2 = np.minimum(x2[i], x2[rem])
+        yy2 = np.minimum(y2[i], y2[rem])
+
+        # Compute widths/heights and clamp at zero in-place to reduce temporaries
+        w = xx2 - xx1 + 1
+        np.maximum(w, 0.0, out=w)
+        h = yy2 - yy1 + 1
+        np.maximum(h, 0.0, out=h)
+
         inter = w * h
-        ovr = inter / (areas[i] + areas[order[1:]] - inter)
+        ovr = inter / (areas[i] + areas[rem] - inter)
 
-        inds = np.where(ovr <= nms_thr)[0]
-        order = order[inds + 1]
+        keep_mask = ovr <= nms_thr
+        order = rem[keep_mask]
 
     return keep
