@@ -17,4 +17,4 @@ def safe_division(a, b) -> float:
     Returns:
     float: a/b or a/FLOAT_EPSILON (should be around 2.2E-16) when b == 0
     """
-    return a / max(b, FLOAT_EPSILON)
+    return a / FLOAT_EPSILON if b <= FLOAT_EPSILON else a / b
