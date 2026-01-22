@@ -150,20 +150,31 @@ class UnstructuredYoloXModel(UnstructuredObjectDetectionModel):
 def preprocess(img, input_size, swap=(2, 0, 1)):
     """Preprocess image data before YoloX inference."""
     if len(img.shape) == 3:
-        padded_img = np.ones((input_size[0], input_size[1], 3), dtype=np.uint8) * 114
+        padded_img = np.full((input_size[0], input_size[1], 3), 114, dtype=np.uint8)
     else:
-        padded_img = np.ones(input_size, dtype=np.uint8) * 114
+        padded_img = np.full(input_size, 114, dtype=np.uint8)
 
-    r = min(input_size[0] / img.shape[0], input_size[1] / img.shape[1])
+    # Precompute shapes and scale to avoid repeated attribute lookups and casts
+    img_h = img.shape[0]
+    img_w = img.shape[1]
+    r = min(input_size[0] / img_h, input_size[1] / img_w)
+
+    resized_h = int(img_h * r)
+    resized_w = int(img_w * r)
+
+    # cv2.resize expects (width, height)
     resized_img = cv2.resize(
         img,
-        (int(img.shape[1] * r), int(img.shape[0] * r)),
+        (resized_w, resized_h),
         interpolation=cv2.INTER_LINEAR,
-    ).astype(np.uint8)
-    padded_img[: int(img.shape[0] * r), : int(img.shape[1] * r)] = resized_img
+    )
+    # Only cast when necessary to avoid an extra copy
+    if resized_img.dtype != np.uint8:
+        resized_img = resized_img.astype(np.uint8)
 
-    padded_img = padded_img.transpose(swap)
-    padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
+    padded_img[:resized_h, :resized_w] = resized_img
+
+    padded_img = np.ascontiguousarray(padded_img.transpose(swap), dtype=np.float32)
     return padded_img, r
 
 
