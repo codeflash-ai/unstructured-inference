@@ -133,8 +133,15 @@ class UnstructuredObjectDetectionModel(UnstructuredModel):
     ) -> List[LayoutElement]:
         """After this function, the list of elements will not contain any element inside
         of the type specified"""
-        target_elements = [e for e in elements if e.type == type_to_clean]
-        other_elements = [e for e in elements if e.type != type_to_clean]
+        # Partition in a single pass to avoid iterating the input twice
+        target_elements: list[LayoutElement] = []
+        other_elements: list[LayoutElement] = []
+        for e in elements:
+            if e.type == type_to_clean:
+                target_elements.append(e)
+            else:
+                other_elements.append(e)
+
         if len(target_elements) == 0 or len(other_elements) == 0:
             return elements
 
@@ -143,24 +150,35 @@ class UnstructuredObjectDetectionModel(UnstructuredModel):
         other_elements.sort(key=lambda e: e.bbox.area, reverse=True)
 
         # First check if targets contains each other
-        for element in target_elements:  # Just handles containment or little overlap
-            contains = [
-                e
-                for e in target_elements
-                if e.bbox.is_almost_subregion_of(element.bbox) and e != element
-            ]
-            for contained in contains:
-                target_elements.remove(contained)
-        # Then check if remaining elements intersect with targets
-        other_elements = filter(
-            lambda e: not any(
-                e.bbox.is_almost_subregion_of(target.bbox) for target in target_elements
-            ),
-            other_elements,
-        )  # type:ignore
 
-        final_elements = list(other_elements)
-        final_elements.extend(target_elements)
+        # First check if targets contains each other
+        # Keep only the largest targets that are not contained in any previously kept target.
+        kept_targets: list[LayoutElement] = []
+        for element in target_elements:  # Just handles containment or little overlap
+            contained_by_kept = False
+            for kept in kept_targets:
+                if element.bbox.is_almost_subregion_of(kept.bbox):
+                    contained_by_kept = True
+                    break
+            if not contained_by_kept:
+                kept_targets.append(element)
+
+        # Then check if remaining elements intersect with targets
+        final_other: list[LayoutElement] = []
+        for e in other_elements:
+            is_contained = False
+            for target in kept_targets:
+                if e.bbox.is_almost_subregion_of(target.bbox):
+                    is_contained = True
+                    break
+            if not is_contained:
+                final_other.append(e)
+
+        final_elements = final_other
+        final_elements.extend(kept_targets)
+        # Note(benjamin): could use bisect.insort,
+        # but need to add < operator for
+        # LayoutElement in python <3.10
         # Note(benjamin): could use bisect.insort,
         # but need to add < operator for
         # LayoutElement in python <3.10
