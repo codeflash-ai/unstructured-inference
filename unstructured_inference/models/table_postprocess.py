@@ -233,9 +233,67 @@ def get_bbox_span_subset(spans, bbox, threshold=0.5):
     threshold: the fraction of the span that must overlap with the bbox.
     """
     span_subset = []
+    # Inline numeric bbox intersection test to avoid heavy Rect construction in overlaps()
+    # bbox format assumed to be [x0, y0, x1, y1] or similar sequence-like.
+    try:
+        bx0, by0, bx1, by1 = bbox  # may raise ValueError if bbox doesn't have 4 items
+    except Exception:
+        # Fall back to original behavior via overlaps if bbox is malformed for numeric test.
+        for span in spans:
+            if overlaps(span["bbox"], bbox, threshold):
+                span_subset.append(span)
+        return span_subset
+
+    # ensure floats for arithmetic
+    bx0 = float(bx0)
+    by0 = float(by0)
+    bx1 = float(bx1)
+    by1 = float(by1)
+
+    # Precompute bbox area (area of bbox argument)
+    b_width = bx1 - bx0
+    b_height = by1 - by0
+    # If bbox has zero area, no spans can overlap by positive fraction
+    if b_width <= 0 or b_height <= 0:
+        return span_subset
+
+    b_area = b_width * b_height
+
+    append = span_subset.append
     for span in spans:
-        if overlaps(span["bbox"], bbox, threshold):
-            span_subset.append(span)
+        sb = span.get("bbox")
+        if sb is None:
+            continue
+        # Fast path numeric unpack; fallback to overlaps if unpack fails
+        if not (hasattr(sb, "__len__") and len(sb) >= 4):
+            if overlaps(sb, bbox, threshold):
+                append(span)
+            continue
+        sx0, sy0, sx1, sy1 = sb[0], sb[1], sb[2], sb[3]
+        # compute area of span bbox (area1 in overlaps)
+        s_width = sx1 - sx0
+        s_height = sy1 - sy0
+        if s_width <= 0 or s_height <= 0:
+            # area1 == 0 -> overlaps returns False
+            continue
+        s_area = s_width * s_height
+
+        # intersection rectangle
+        ix0 = bx0 if bx0 > sx0 else sx0
+        iy0 = by0 if by0 > sy0 else sy0
+        ix1 = bx1 if bx1 < sx1 else sx1
+        iy1 = by1 if by1 < sy1 else sy1
+
+        inter_w = ix1 - ix0
+        inter_h = iy1 - iy0
+        if inter_w <= 0 or inter_h <= 0:
+            continue
+
+        inter_area = inter_w * inter_h
+        # Check fraction of span's area that overlaps with bbox (matches overlaps semantics)
+        if inter_area / s_area >= threshold:
+            append(span)
+
     return span_subset
 
 
@@ -256,33 +314,43 @@ def extract_text_from_spans(spans, join_with_space=True, remove_integer_superscr
     """
 
     join_char = " " if join_with_space else ""
-    spans_copy = spans[:]
-
-    if remove_integer_superscripts:
+    # Build spans_copy in a single pass when removing integer superscripts to avoid O(n^2) removes.
+    if not remove_integer_superscripts:
+        spans_copy = spans[:]  # shallow copy to preserve original list object semantics
+    else:
+        spans_copy = []
         for span in spans:
             if "flags" not in span:
+                spans_copy.append(span)
                 continue
             flags = span["flags"]
             if flags & 2**0:  # superscript flag
                 if span["text"].strip().isdigit():
-                    spans_copy.remove(span)
+                    continue
                 else:
                     span["superscript"] = True
+
+            spans_copy.append(span)
 
     if len(spans_copy) == 0:
         return ""
 
-    spans_copy.sort(key=lambda span: span["span_num"])
-    spans_copy.sort(key=lambda span: span["line_num"])
-    spans_copy.sort(key=lambda span: span["block_num"])
+    # Use a single sort with a tuple key instead of three stable sorts for performance.
+    spans_copy.sort(key=lambda span: (span["block_num"], span["line_num"], span["span_num"]))
+
+    # Force the span at the end of every line within a block to have exactly one space
+    # unless the line ends with a space or ends with a non-space followed by a hyphen
 
     # Force the span at the end of every line within a block to have exactly one space
     # unless the line ends with a space or ends with a non-space followed by a hyphen
     line_texts = []
     line_span_texts = [spans_copy[0]["text"]]
+    # Localize frequently used names
+    _join = join_char.join
+    _strip = str.strip
     for span1, span2 in zip(spans_copy[:-1], spans_copy[1:]):
         if span1["block_num"] != span2["block_num"] or span1["line_num"] != span2["line_num"]:
-            line_text = join_char.join(line_span_texts).strip()
+            line_text = _strip(_join(line_span_texts))
             if (
                 len(line_text) > 0
                 and line_text[-1] != " "
@@ -294,10 +362,10 @@ def extract_text_from_spans(spans, join_with_space=True, remove_integer_superscr
             line_span_texts = [span2["text"]]
         else:
             line_span_texts.append(span2["text"])
-    line_text = join_char.join(line_span_texts)
+    line_text = _join(line_span_texts)
     line_texts.append(line_text)
 
-    return join_char.join(line_texts).strip()
+    return _strip(_join(line_texts))
 
 
 def sort_objects_left_to_right(objs):
