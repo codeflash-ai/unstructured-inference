@@ -134,15 +134,17 @@ def nms_by_containment(container_objects, package_objects, overlap_threshold=0.5
         forced_assignment=False,
     )
 
+    packages_sets = [set(pkgs) for pkgs in packages_by_container]
+
     for object2_num in range(1, num_objects):
-        object2_packages = set(packages_by_container[object2_num])
+        object2_packages = packages_sets[object2_num]
         if len(object2_packages) == 0:
             suppression[object2_num] = True
         for object1_num in range(object2_num):
             if not suppression[object1_num]:
-                object1_packages = set(packages_by_container[object1_num])
-                if len(object2_packages.intersection(object1_packages)) > 0:
+                if packages_sets[object1_num] & object2_packages:
                     suppression[object2_num] = True
+                    break
 
     final_objects = [obj for idx, obj in enumerate(container_objects) if not suppression[idx]]
     return final_objects
@@ -363,17 +365,36 @@ def nms(objects, match_criteria="object2_overlap", match_threshold=0.05, keep_hi
 
     objects = sort_objects_by_score(objects, reverse=keep_higher)
 
+    bboxes = [obj["bbox"] for obj in objects]
+    areas = []
+    for bbox in bboxes:
+        w = bbox[2] - bbox[0]
+        h = bbox[3] - bbox[1]
+        area = w * h
+        areas.append(area if area > 0 else 0.0)
+
     num_objects = len(objects)
     suppression = [False for obj in objects]
 
     for object2_num in range(1, num_objects):
-        object2_rect = Rect(objects[object2_num]["bbox"])
-        object2_area = object2_rect.get_area()
+        bbox2 = bboxes[object2_num]
+        x2_min, y2_min, x2_max, y2_max = bbox2
+        object2_area = areas[object2_num]
         for object1_num in range(object2_num):
             if not suppression[object1_num]:
-                object1_rect = Rect(objects[object1_num]["bbox"])
-                object1_area = object1_rect.get_area()
-                intersect_area = object1_rect.intersect(object2_rect).get_area()
+                bbox1 = bboxes[object1_num]
+                x1_min, y1_min, x1_max, y1_max = bbox1
+                object1_area = areas[object1_num]
+
+                xi_min = x1_min if x1_min > x2_min else x2_min
+                yi_min = y1_min if y1_min > y2_min else y2_min
+                xi_max = x1_max if x1_max < x2_max else x2_max
+                yi_max = y1_max if y1_max < y2_max else y2_max
+
+                iw = xi_max - xi_min
+                ih = yi_max - yi_min
+                intersect_area = (iw * ih) if (iw > 0 and ih > 0) else 0.0
+
                 try:
                     if match_criteria == "object1_overlap":
                         metric = intersect_area / object1_area
