@@ -46,19 +46,35 @@ class Rect:
 
     def include_rect(self, bbox):
         """Calculates a rectangle that includes both rectangles"""
-        other = Rect(bbox)
+        # Avoid constructing a temporary Rect(bbox) to reduce allocations and overhead.
+        if bbox is None:
+            other_x_min = 0
+            other_y_min = 0
+            other_x_max = 0
+            other_y_max = 0
+        else:
+            other_x_min = bbox[0]
+            other_y_min = bbox[1]
+            other_x_max = bbox[2]
+            other_y_max = bbox[3]
 
-        if self.get_area() == 0:
-            self.x_min = other.x_min
-            self.y_min = other.y_min
-            self.x_max = other.x_max
-            self.y_max = other.y_max
+        # Use coordinate comparisons instead of calling get_area() to determine empty area.
+        if self.x_max <= self.x_min or self.y_max <= self.y_min:
+            self.x_min = other_x_min
+            self.y_min = other_y_min
+            self.x_max = other_x_max
+            self.y_max = other_y_max
             return self
 
-        self.x_min = min(self.x_min, other.x_min)
-        self.y_min = min(self.y_min, other.y_min)
-        self.x_max = max(self.x_max, other.x_max)
-        self.y_max = max(self.y_max, other.y_max)
+        # Inline comparisons instead of min/max to reduce function-call overhead.
+        if other_x_min < self.x_min:
+            self.x_min = other_x_min
+        if other_y_min < self.y_min:
+            self.y_min = other_y_min
+        if other_x_max > self.x_max:
+            self.x_max = other_x_max
+        if other_y_max > self.y_max:
+            self.y_max = other_y_max
 
         # if self.get_area() == 0:
         #     self.x_min = other.x_min
