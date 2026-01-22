@@ -134,15 +134,23 @@ def nms_by_containment(container_objects, package_objects, overlap_threshold=0.5
         forced_assignment=False,
     )
 
+
+    # Precompute sets of package indices to avoid repeatedly constructing sets in the inner loop
+    packages_sets = [set(pkg_list) if pkg_list else frozenset() for pkg_list in packages_by_container]
+
     for object2_num in range(1, num_objects):
-        object2_packages = set(packages_by_container[object2_num])
+        object2_packages = packages_sets[object2_num]
         if len(object2_packages) == 0:
             suppression[object2_num] = True
+            continue
         for object1_num in range(object2_num):
             if not suppression[object1_num]:
-                object1_packages = set(packages_by_container[object1_num])
-                if len(object2_packages.intersection(object1_packages)) > 0:
+                object1_packages = packages_sets[object1_num]
+                # intersection check is faster with set intersection and avoids allocating a new set
+                if object2_packages & object1_packages:
                     suppression[object2_num] = True
+
+                    break
 
     final_objects = [obj for idx, obj in enumerate(container_objects) if not suppression[idx]]
     return final_objects
@@ -210,10 +218,14 @@ def remove_objects_without_content(page_spans, objects):
     Remove any objects (these can be rows, columns, supercells, etc.) that don't
     have any text associated with them.
     """
-    for obj in objects[:]:
+    # Build new list of objects to keep to avoid repeated list.remove calls (O(n^2) behavior)
+    kept_objects = []
+    for obj in objects:
         object_text, _ = extract_text_inside_bbox(page_spans, obj["bbox"])
-        if len(object_text.strip()) == 0:
-            objects.remove(obj)
+        if len(object_text.strip()) != 0:
+            kept_objects.append(obj)
+    # Mutate the original list in-place to preserve behavior (caller observes same list object mutated)
+    objects[:] = kept_objects
 
 
 def extract_text_inside_bbox(spans, bbox):
@@ -366,14 +378,40 @@ def nms(objects, match_criteria="object2_overlap", match_threshold=0.05, keep_hi
     num_objects = len(objects)
     suppression = [False for obj in objects]
 
+
+    # Helper functions to compute bbox area and intersection area without constructing Rect objects.
+    # These replicate the behavior of Rect.get_area() and Rect.intersect() used in the original code,
+    # including the special case where self.get_area() == 0 in Rect.intersect().
+    def _bbox_area(bbox):
+        w = bbox[2] - bbox[0]
+        h = bbox[3] - bbox[1]
+        return (w * h) if (w > 0 and h > 0) else 0.0
+
+    def _intersect_area(bbox1, bbox2):
+        area1 = _bbox_area(bbox1)
+        # Replicate Rect.intersect: if self.get_area() == 0 then it becomes other, so intersection area equals other's area
+        if area1 == 0.0:
+            return _bbox_area(bbox2)
+        x_min = bbox1[0] if bbox1[0] > bbox2[0] else bbox2[0]
+        y_min = bbox1[1] if bbox1[1] > bbox2[1] else bbox2[1]
+        x_max = bbox1[2] if bbox1[2] < bbox2[2] else bbox2[2]
+        y_max = bbox1[3] if bbox1[3] < bbox2[3] else bbox2[3]
+        w = x_max - x_min
+        h = y_max - y_min
+        return (w * h) if (w > 0 and h > 0) else 0.0
+
+    # Precompute bboxes and areas for speed
+    bboxes = [obj["bbox"] for obj in objects]
+    areas = [_bbox_area(b) for b in bboxes]
+
     for object2_num in range(1, num_objects):
-        object2_rect = Rect(objects[object2_num]["bbox"])
-        object2_area = object2_rect.get_area()
+        bbox2 = bboxes[object2_num]
+        object2_area = areas[object2_num]
         for object1_num in range(object2_num):
             if not suppression[object1_num]:
-                object1_rect = Rect(objects[object1_num]["bbox"])
-                object1_area = object1_rect.get_area()
-                intersect_area = object1_rect.intersect(object2_rect).get_area()
+                bbox1 = bboxes[object1_num]
+                object1_area = areas[object1_num]
+                intersect_area = _intersect_area(bbox1, bbox2)
                 try:
                     if match_criteria == "object1_overlap":
                         metric = intersect_area / object1_area
