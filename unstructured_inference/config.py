@@ -25,7 +25,9 @@ class InferenceConfig:
         return default_value
 
     def _get_float(self, var: str, default_value: float) -> float:
-        if value := self._get_string(var):
+        environ = os.environ
+        value = environ.get(var)
+        if value:
             return float(value)
         return default_value
 
