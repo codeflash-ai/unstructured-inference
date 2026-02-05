@@ -14,6 +14,13 @@ from unstructured_inference.models.yolox import MODEL_TYPES as YOLOX_MODEL_TYPES
 from unstructured_inference.models.yolox import UnstructuredYoloXModel
 from unstructured_inference.utils import LazyDict
 
+_default_model_class_mapping = {
+    **dict.fromkeys(DETECTRON2_ONNX_MODEL_TYPES, UnstructuredDetectronONNXModel),
+    **dict.fromkeys(YOLOX_MODEL_TYPES, UnstructuredYoloXModel),
+}
+
+_default_model_types_mapping = {**DETECTRON2_ONNX_MODEL_TYPES, **YOLOX_MODEL_TYPES}
+
 DEFAULT_MODEL = "yolox"
 
 
@@ -50,10 +57,7 @@ def get_default_model_mappings() -> Tuple[
     Dict[str, dict | LazyDict],
 ]:
     """default model mappings for models that are in `unstructured_inference` repo"""
-    return {
-        **dict.fromkeys(DETECTRON2_ONNX_MODEL_TYPES, UnstructuredDetectronONNXModel),
-        **dict.fromkeys(YOLOX_MODEL_TYPES, UnstructuredYoloXModel),
-    }, {**DETECTRON2_ONNX_MODEL_TYPES, **YOLOX_MODEL_TYPES}
+    return _default_model_class_mapping.copy(), _default_model_types_mapping.copy()
 
 
 model_class_map, model_config_map = get_default_model_mappings()
