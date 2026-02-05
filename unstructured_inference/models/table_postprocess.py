@@ -515,18 +515,21 @@ def nms_supercells(supercells):
 
     supercells = sort_objects_by_score(supercells)
     num_supercells = len(supercells)
-    suppression = [False for supercell in supercells]
+    suppression = [False] * num_supercells
+
 
     for supercell2_num in range(1, num_supercells):
         supercell2 = supercells[supercell2_num]
         for supercell1_num in range(supercell2_num):
             supercell1 = supercells[supercell1_num]
             remove_supercell_overlap(supercell1, supercell2)
-        if (
-            (len(supercell2["row_numbers"]) < 2 and len(supercell2["column_numbers"]) < 2)
-            or len(supercell2["row_numbers"]) == 0
-            or len(supercell2["column_numbers"]) == 0
-        ):
+        
+        row_nums = supercell2["row_numbers"]
+        col_nums = supercell2["column_numbers"]
+        row_len = len(row_nums)
+        col_len = len(col_nums)
+        
+        if (row_len < 2 and col_len < 2) or row_len == 0 or col_len == 0:
             suppression[supercell2_num] = True
 
     return [obj for idx, obj in enumerate(supercells) if not suppression[idx]]
@@ -574,39 +577,45 @@ def remove_supercell_overlap(supercell1, supercell2):
     supercell #1. This resolves the overlap by removing fewer grid cells from
     supercell #1 than if we eliminated column C from it.
     """
-    common_rows = set(supercell1["row_numbers"]).intersection(set(supercell2["row_numbers"]))
-    common_columns = set(supercell1["column_numbers"]).intersection(
-        set(supercell2["column_numbers"]),
-    )
+    row_nums_1 = set(supercell1["row_numbers"])
+    row_nums_2 = set(supercell2["row_numbers"])
+    col_nums_1 = set(supercell1["column_numbers"])
+    col_nums_2 = set(supercell2["column_numbers"])
+    
+    common_rows = row_nums_1 & row_nums_2
+    common_columns = col_nums_1 & col_nums_2
 
     # While the supercells have overlapping grid cells, continue shrinking the less-confident
     # supercell one row or one column at a time
-    while len(common_rows) > 0 and len(common_columns) > 0:
+    while common_rows and common_columns:
+        row_list = supercell2["row_numbers"]
+        col_list = supercell2["column_numbers"]
+        
         # Try to shrink the supercell as little as possible to remove the overlap;
         # if the supercell has fewer rows than columns, remove an overlapping column,
         # because this removes fewer grid cells from the supercell;
         # otherwise remove an overlapping row
-        if len(supercell2["row_numbers"]) < len(supercell2["column_numbers"]):
-            min_column = min(supercell2["column_numbers"])
-            max_column = max(supercell2["column_numbers"])
+        if len(row_list) < len(col_list):
+            min_column = min(col_list)
+            max_column = max(col_list)
             if max_column in common_columns:
-                common_columns.remove(max_column)
-                supercell2["column_numbers"].remove(max_column)
+                common_columns.discard(max_column)
+                col_list.remove(max_column)
             elif min_column in common_columns:
-                common_columns.remove(min_column)
-                supercell2["column_numbers"].remove(min_column)
+                common_columns.discard(min_column)
+                col_list.remove(min_column)
             else:
-                supercell2["column_numbers"] = []
-                common_columns = set()
+                col_list.clear()
+                common_columns.clear()
         else:
-            min_row = min(supercell2["row_numbers"])
-            max_row = max(supercell2["row_numbers"])
+            min_row = min(row_list)
+            max_row = max(row_list)
             if max_row in common_rows:
-                common_rows.remove(max_row)
-                supercell2["row_numbers"].remove(max_row)
+                common_rows.discard(max_row)
+                row_list.remove(max_row)
             elif min_row in common_rows:
-                common_rows.remove(min_row)
-                supercell2["row_numbers"].remove(min_row)
+                common_rows.discard(min_row)
+                row_list.remove(min_row)
             else:
-                supercell2["row_numbers"] = []
-                common_rows = set()
+                row_list.clear()
+                common_rows.clear()
