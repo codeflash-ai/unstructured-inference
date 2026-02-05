@@ -25,7 +25,11 @@ class Rect:
 
     def intersect(self, other):
         """Calculates the intersection with another rectangle"""
-        if self.get_area() == 0:
+        width = self.x_max - self.x_min
+        height = self.y_max - self.y_min
+        area = width * height if width > 0 and height > 0 else 0.0
+        
+        if area == 0:
             self.x_min = other.x_min
             self.y_min = other.y_min
             self.x_max = other.x_max
@@ -36,7 +40,7 @@ class Rect:
             self.x_max = min(self.x_max, other.x_max)
             self.y_max = min(self.y_max, other.y_max)
 
-            if self.x_min > self.x_max or self.y_min > self.y_max or self.get_area() == 0:
+            if self.x_min > self.x_max or self.y_min > self.y_max:
                 self.x_min = 0
                 self.y_min = 0
                 self.x_max = 0
@@ -405,13 +409,25 @@ def align_supercells(supercells, rows, columns):
         col_bbox_rect = None
         intersecting_header_rows = set()
         intersecting_data_rows = set()
+        
+        # Cache supercell bbox to avoid repeated lookups
+        supercell_bbox = supercell["bbox"]
+        supercell_y_min = supercell_bbox[1]
+        supercell_y_max = supercell_bbox[3]
+        supercell_height = supercell_y_max - supercell_y_min
+        has_span = "span" in supercell
+        
         for row_num, row in enumerate(rows):
-            row_height = row["bbox"][3] - row["bbox"][1]
-            supercell_height = supercell["bbox"][3] - supercell["bbox"][1]
-            min_row_overlap = max(row["bbox"][1], supercell["bbox"][1])
-            max_row_overlap = min(row["bbox"][3], supercell["bbox"][3])
+            row_bbox = row["bbox"]
+            row_y_min = row_bbox[1]
+            row_y_max = row_bbox[3]
+            row_height = row_y_max - row_y_min
+            
+            min_row_overlap = max(row_y_min, supercell_y_min)
+            max_row_overlap = min(row_y_max, supercell_y_max)
             overlap_height = max_row_overlap - min_row_overlap
-            if "span" in supercell:
+            
+            if has_span:
                 overlap_fraction = max(
                     overlap_height / row_height,
                     overlap_height / supercell_height,
@@ -434,7 +450,7 @@ def align_supercells(supercells, rows, columns):
                 intersecting_data_rows = set()
         if len(intersecting_header_rows) > 0:
             supercell["header"] = True
-        elif "span" in supercell:
+        elif has_span:
             continue  # Require span supercell to be in the header
         intersecting_rows = intersecting_data_rows.union(intersecting_header_rows)
         # Determine vertical span of aligned supercell
@@ -447,25 +463,34 @@ def align_supercells(supercells, rows, columns):
             continue
 
         intersecting_cols = []
+        supercell_x_min = supercell_bbox[0]
+        supercell_x_max = supercell_bbox[2]
+        supercell_width = supercell_x_max - supercell_x_min
+        is_header = supercell["header"]
+        
         for col_num, col in enumerate(columns):
-            col_width = col["bbox"][2] - col["bbox"][0]
-            supercell_width = supercell["bbox"][2] - supercell["bbox"][0]
-            min_col_overlap = max(col["bbox"][0], supercell["bbox"][0])
-            max_col_overlap = min(col["bbox"][2], supercell["bbox"][2])
+            col_bbox = col["bbox"]
+            col_x_min = col_bbox[0]
+            col_x_max = col_bbox[2]
+            col_width = col_x_max - col_x_min
+            
+            min_col_overlap = max(col_x_min, supercell_x_min)
+            max_col_overlap = min(col_x_max, supercell_x_max)
             overlap_width = max_col_overlap - min_col_overlap
-            if "span" in supercell:
+            
+            if has_span:
                 overlap_fraction = max(overlap_width / col_width, overlap_width / supercell_width)
                 # Multiply by 2 effectively lowers the threshold to 0.25
-                if supercell["header"]:
+                if is_header:
                     overlap_fraction = overlap_fraction * 2
             else:
                 overlap_fraction = overlap_width / col_width
             if overlap_fraction >= 0.5:
                 intersecting_cols.append(col_num)
                 if col_bbox_rect is None:
-                    col_bbox_rect = Rect(col["bbox"])
+                    col_bbox_rect = Rect(col_bbox)
                 else:
-                    col_bbox_rect = col_bbox_rect.include_rect(col["bbox"])
+                    col_bbox_rect = col_bbox_rect.include_rect(col_bbox)
         if col_bbox_rect is None:
             continue
 
@@ -483,15 +508,16 @@ def align_supercells(supercells, rows, columns):
             aligned_supercells.append(supercell)
 
             # A span supercell in the header means there must be supercells above it in the header
-            if "span" in supercell and supercell["header"] and len(supercell["column_numbers"]) > 1:
+            if has_span and is_header and len(supercell["column_numbers"]) > 1:
+                column_numbers = supercell["column_numbers"]
                 for row_num in range(0, min(supercell["row_numbers"])):
                     new_supercell = {
                         "row_numbers": [row_num],
-                        "column_numbers": supercell["column_numbers"],
+                        "column_numbers": column_numbers,
                         "score": supercell["score"],
                         "propagated": True,
                     }
-                    new_supercell_columns = [columns[idx] for idx in supercell["column_numbers"]]
+                    new_supercell_columns = [columns[idx] for idx in column_numbers]
                     new_supercell_rows = [rows[idx] for idx in supercell["row_numbers"]]
                     bbox = [
                         min([column["bbox"][0] for column in new_supercell_columns]),
