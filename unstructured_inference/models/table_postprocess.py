@@ -125,7 +125,8 @@ def nms_by_containment(container_objects, package_objects, overlap_threshold=0.5
     """
     container_objects = sort_objects_by_score(container_objects)
     num_objects = len(container_objects)
-    suppression = [False for obj in container_objects]
+    suppression = [False] * num_objects
+
 
     packages_by_container, _, _ = slot_into_containers(
         container_objects,
@@ -134,15 +135,23 @@ def nms_by_containment(container_objects, package_objects, overlap_threshold=0.5
         forced_assignment=False,
     )
 
+
+    # Pre-convert to sets once for all containers
+    package_sets = [set(packages) for packages in packages_by_container]
+
     for object2_num in range(1, num_objects):
-        object2_packages = set(packages_by_container[object2_num])
+        object2_packages = package_sets[object2_num]
         if len(object2_packages) == 0:
             suppression[object2_num] = True
+            continue
+            
         for object1_num in range(object2_num):
             if not suppression[object1_num]:
-                object1_packages = set(packages_by_container[object1_num])
-                if len(object2_packages.intersection(object1_packages)) > 0:
+                object1_packages = package_sets[object1_num]
+                if object2_packages & object1_packages:  # More efficient set intersection check
                     suppression[object2_num] = True
+
+                    break
 
     final_objects = [obj for idx, obj in enumerate(container_objects) if not suppression[idx]]
     return final_objects
@@ -364,16 +373,27 @@ def nms(objects, match_criteria="object2_overlap", match_threshold=0.05, keep_hi
     objects = sort_objects_by_score(objects, reverse=keep_higher)
 
     num_objects = len(objects)
-    suppression = [False for obj in objects]
+    suppression = [False] * num_objects
+
+    # Pre-compute bboxes and rects/areas for all objects
+    bboxes = [obj["bbox"] for obj in objects]
+    rects = [Rect(bbox) for bbox in bboxes]
+    areas = [rect.get_area() for rect in rects]
+
 
     for object2_num in range(1, num_objects):
-        object2_rect = Rect(objects[object2_num]["bbox"])
-        object2_area = object2_rect.get_area()
+        object2_rect = rects[object2_num]
+        object2_area = areas[object2_num]
+        
         for object1_num in range(object2_num):
             if not suppression[object1_num]:
-                object1_rect = Rect(objects[object1_num]["bbox"])
-                object1_area = object1_rect.get_area()
-                intersect_area = object1_rect.intersect(object2_rect).get_area()
+                object1_rect = rects[object1_num]
+                object1_area = areas[object1_num]
+                
+                # Create a copy for intersection to avoid mutating the original
+                intersect_rect = Rect(bboxes[object1_num])
+                intersect_area = intersect_rect.intersect(object2_rect).get_area()
+                
                 try:
                     if match_criteria == "object1_overlap":
                         metric = intersect_area / object1_area
