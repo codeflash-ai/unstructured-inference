@@ -369,8 +369,8 @@ def intersection_areas_between_coords(
     threshold: float = 0.5,
 ):
     """compute intersection area and own areas for two groups of bounding boxes"""
-    x11, y11, x12, y12 = np.split(coords1, 4, axis=1)
-    x21, y21, x22, y22 = np.split(coords2, 4, axis=1)
+    x11, y11, x12, y12 = coords1[:, 0:1], coords1[:, 1:2], coords1[:, 2:3], coords1[:, 3:4]
+    x21, y21, x22, y22 = coords2[:, 0:1], coords2[:, 1:2], coords2[:, 2:3], coords2[:, 3:4]
 
     xa = np.maximum(x11, np.transpose(x21))
     ya = np.maximum(y11, np.transpose(y21))
