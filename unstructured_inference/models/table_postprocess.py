@@ -243,11 +243,22 @@ def overlaps(bbox1, bbox2, threshold=0.5):
     """
     Test if more than "threshold" fraction of bbox1 overlaps with bbox2.
     """
-    rect1 = Rect(list(bbox1))
-    area1 = rect1.get_area()
-    if area1 == 0:
+    x1_min, y1_min, x1_max, y1_max = bbox1
+    area1 = (x1_max - x1_min) * (y1_max - y1_min)
+    if area1 <= 0:
         return False
-    return rect1.intersect(Rect(list(bbox2))).get_area() / area1 >= threshold
+    
+    x2_min, y2_min, x2_max, y2_max = bbox2
+    intersect_x_min = max(x1_min, x2_min)
+    intersect_y_min = max(y1_min, y2_min)
+    intersect_x_max = min(x1_max, x2_max)
+    intersect_y_max = min(y1_max, y2_max)
+    
+    if intersect_x_min >= intersect_x_max or intersect_y_min >= intersect_y_max:
+        return False
+    
+    intersect_area = (intersect_x_max - intersect_x_min) * (intersect_y_max - intersect_y_min)
+    return intersect_area / area1 >= threshold
 
 
 def extract_text_from_spans(spans, join_with_space=True, remove_integer_superscripts=True):
