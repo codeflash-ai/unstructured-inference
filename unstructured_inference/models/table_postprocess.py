@@ -18,6 +18,9 @@ class Rect:
             self.x_max = bbox[2]
             self.y_max = bbox[3]
 
+        # Cache the bbox list to avoid recreating it on every get_bbox() call
+        self._bbox = [self.x_min, self.y_min, self.x_max, self.y_max]
+
     def get_area(self):
         """Calculates the area of the rectangle"""
         area = (self.x_max - self.x_min) * (self.y_max - self.y_min)
@@ -70,7 +73,7 @@ class Rect:
 
     def get_bbox(self):
         """Returns the coordinates that define the rectangle"""
-        return [self.x_min, self.y_min, self.x_max, self.y_max]
+        return self._bbox.copy()
 
 
 def apply_threshold(objects, threshold):
