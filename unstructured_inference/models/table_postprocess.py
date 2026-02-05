@@ -233,9 +233,26 @@ def get_bbox_span_subset(spans, bbox, threshold=0.5):
     threshold: the fraction of the span that must overlap with the bbox.
     """
     span_subset = []
+    bbox_x0, bbox_y0, bbox_x1, bbox_y1 = bbox
+    
     for span in spans:
-        if overlaps(span["bbox"], bbox, threshold):
-            span_subset.append(span)
+        span_bbox = span["bbox"]
+        x0, y0, x1, y1 = span_bbox
+        
+        area = (x1 - x0) * (y1 - y0)
+        if area == 0:
+            continue
+            
+        intersect_x0 = max(x0, bbox_x0)
+        intersect_y0 = max(y0, bbox_y0)
+        intersect_x1 = min(x1, bbox_x1)
+        intersect_y1 = min(y1, bbox_y1)
+        
+        if intersect_x0 < intersect_x1 and intersect_y0 < intersect_y1:
+            intersect_area = (intersect_x1 - intersect_x0) * (intersect_y1 - intersect_y0)
+            if intersect_area / area >= threshold:
+                span_subset.append(span)
+    
     return span_subset
 
 
@@ -272,9 +289,7 @@ def extract_text_from_spans(spans, join_with_space=True, remove_integer_superscr
     if len(spans_copy) == 0:
         return ""
 
-    spans_copy.sort(key=lambda span: span["span_num"])
-    spans_copy.sort(key=lambda span: span["line_num"])
-    spans_copy.sort(key=lambda span: span["block_num"])
+    spans_copy.sort(key=lambda span: (span["block_num"], span["line_num"], span["span_num"]))
 
     # Force the span at the end of every line within a block to have exactly one space
     # unless the line ends with a space or ends with a non-space followed by a hyphen
