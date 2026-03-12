@@ -2,61 +2,57 @@
 #    uv pip compile --python-version 3.10 requirements/test.in -o requirements/test.txt --no-emit-package pip --no-emit-package setuptools
 anyio==4.12.1
     # via httpx
-black==25.11.0
-    # via -r requirements/test.in
+black==26.3.1
+    # via -r test.in
 certifi==2026.1.4
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   httpcore
     #   httpx
     #   requests
 charset-normalizer==3.4.4
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   requests
 click==8.1.8
     # via
-    #   -r requirements/test.in
+    #   -r test.in
     #   black
-coverage==7.10.7
+coverage[toml]==7.10.7
     # via
-    #   -r requirements/test.in
+    #   -r test.in
     #   pytest-cov
-exceptiongroup==1.3.1
-    # via
-    #   anyio
-    #   pytest
 filelock==3.19.1
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   huggingface-hub
 flake8==7.3.0
     # via
-    #   -r requirements/test.in
+    #   -r test.in
     #   flake8-docstrings
 flake8-docstrings==1.7.0
-    # via -r requirements/test.in
+    # via -r test.in
 fsspec==2025.10.0
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   huggingface-hub
 h11==0.16.0
     # via httpcore
 hf-xet==1.2.0
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   huggingface-hub
 httpcore==1.0.9
     # via httpx
 httpx==0.28.1
-    # via -r requirements/test.in
+    # via -r test.in
 huggingface-hub==0.36.0
     # via
-    #   -c requirements/base.txt
-    #   -r requirements/test.in
+    #   -c base.txt
+    #   -r test.in
 idna==3.11
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   anyio
     #   httpx
     #   requests
@@ -67,14 +63,14 @@ librt==0.7.8
 mccabe==0.7.0
     # via flake8
 mypy==1.19.1
-    # via -r requirements/test.in
+    # via -r test.in
 mypy-extensions==1.1.0
     # via
     #   black
     #   mypy
 packaging==25.0
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   black
     #   huggingface-hub
     #   pytest
@@ -83,10 +79,10 @@ pathspec==1.0.3
     #   black
     #   mypy
 pdf2image==1.17.0
-    # via -r requirements/test.in
+    # via -r test.in
 pillow==11.3.0
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   pdf2image
 platformdirs==4.4.0
     # via black
@@ -107,45 +103,36 @@ pytest==8.4.2
     #   pytest-cov
     #   pytest-mock
 pytest-cov==7.0.0
-    # via -r requirements/test.in
+    # via -r test.in
 pytest-mock==3.15.1
-    # via -r requirements/test.in
+    # via -r test.in
 pytokens==0.4.0
     # via black
 pyyaml==6.0.3
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   huggingface-hub
 requests==2.32.5
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   huggingface-hub
 ruff==0.14.13
-    # via -r requirements/test.in
+    # via -r test.in
 snowballstemmer==3.0.1
     # via pydocstyle
-tomli==2.4.0
-    # via
-    #   black
-    #   coverage
-    #   mypy
-    #   pytest
 tqdm==4.67.1
     # via
-    #   -c requirements/base.txt
+    #   -c base.txt
     #   huggingface-hub
 types-pyyaml==6.0.12.20250915
-    # via -r requirements/test.in
+    # via -r test.in
 typing-extensions==4.15.0
     # via
-    #   -c requirements/base.txt
-    #   anyio
-    #   black
-    #   exceptiongroup
+    #   -c base.txt
     #   huggingface-hub
     #   mypy
 urllib3==2.6.3
     # via
-    #   -c requirements/base.txt
-    #   -c requirements/constraints.in
+    #   -c base.txt
+    #   -c constraints.in
     #   requests
