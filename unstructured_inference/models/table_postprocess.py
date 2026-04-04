@@ -6,6 +6,7 @@ from collections import defaultdict
 
 
 class Rect:
+    
     def __init__(self, bbox=None):
         if bbox is None:
             self.x_min = 0
@@ -13,10 +14,7 @@ class Rect:
             self.x_max = 0
             self.y_max = 0
         else:
-            self.x_min = bbox[0]
-            self.y_min = bbox[1]
-            self.x_max = bbox[2]
-            self.y_max = bbox[3]
+            self.x_min, self.y_min, self.x_max, self.y_max = bbox
 
     def get_area(self):
         """Calculates the area of the rectangle"""
@@ -25,7 +23,9 @@ class Rect:
 
     def intersect(self, other):
         """Calculates the intersection with another rectangle"""
-        if self.get_area() == 0:
+        # Inline area calculation to avoid method call overhead
+        area = (self.x_max - self.x_min) * (self.y_max - self.y_min)
+        if area <= 0:
             self.x_min = other.x_min
             self.y_min = other.y_min
             self.x_max = other.x_max
@@ -36,7 +36,9 @@ class Rect:
             self.x_max = min(self.x_max, other.x_max)
             self.y_max = min(self.y_max, other.y_max)
 
-            if self.x_min > self.x_max or self.y_min > self.y_max or self.get_area() == 0:
+            # Inline area calculation again
+            intersect_area = (self.x_max - self.x_min) * (self.y_max - self.y_min)
+            if self.x_min > self.x_max or self.y_min > self.y_max or intersect_area <= 0:
                 self.x_min = 0
                 self.y_min = 0
                 self.x_max = 0
@@ -169,22 +171,27 @@ def slot_into_containers(
     match_scores = defaultdict(dict)
     for package_num, package in enumerate(package_objects):
         match_scores = []
-        package_rect = Rect(package["bbox"])
-        package_area = package_rect.get_area()
+        package_bbox = package["bbox"]
+        # Inline area calculation to avoid creating intermediate Rect and method call
+        package_area = (package_bbox[2] - package_bbox[0]) * (package_bbox[3] - package_bbox[1])
+        
+        if package_area <= 0:
+            continue
+            
         for container_num, container in enumerate(container_objects):
             container_rect = Rect(container["bbox"])
-            intersect_area = container_rect.intersect(Rect(package["bbox"])).get_area()
+            intersect_area = container_rect.intersect(Rect(package_bbox)).get_area()
 
-            if package_area > 0:
-                overlap_fraction = intersect_area / package_area
+            overlap_fraction = intersect_area / package_area
 
-                match_scores.append(
-                    {
-                        "container": container,
-                        "container_num": container_num,
-                        "score": overlap_fraction,
-                    },
-                )
+            match_scores.append(
+                {
+                    "container": container,
+                    "container_num": container_num,
+                    "score": overlap_fraction,
+                },
+            )
+
 
         if len(match_scores) > 0:
             sorted_match_scores = sort_objects_by_score(match_scores)
